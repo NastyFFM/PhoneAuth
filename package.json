@@ -3,5 +3,9 @@
     "@types/react": "^19.0.10",
     "firebase": "^11.3.1",
     "react": "^19.0.0"
+  },
+  "scripts": {
+    "build": "next build && next export",
+    "deploy": "firebase deploy"
   }
 }
