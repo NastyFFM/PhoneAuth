@@ -6,9 +6,12 @@ import {
   signInWithCredential,
   User,
   ConfirmationResult,
-  RecaptchaVerifier
+  RecaptchaVerifier,
+  onAuthStateChanged,
+  Auth
 } from 'firebase/auth';
 import { getAnalytics } from "firebase/analytics";
+import { auth as firebaseAuth } from '../firebase';
 
 // Firebase Konfiguration
 const firebaseConfig = {
@@ -26,34 +29,41 @@ const app = initializeApp(firebaseConfig);
 const analytics = typeof window !== 'undefined' ? getAnalytics(app) : null;
 const auth = getAuth(app);
 
-interface AuthContextType {
-  currentUser: User | null;
+type AuthContextType = {
+  user: User | null;
   loading: boolean;
   verificationId: string | null;
   sendVerificationCode: (phoneNumber: string) => Promise<void>;
   verifyCode: (code: string) => Promise<void>;
   setupRecaptcha: (elementId: string) => void;
-}
+};
 
-const AuthContext = createContext<AuthContextType>({} as AuthContextType);
-
-export function useAuth() {
-  return useContext(AuthContext);
-}
+const AuthContext = createContext<AuthContextType>({
+  user: null,
+  loading: true,
+  verificationId: null,
+  sendVerificationCode: async () => {},
+  verifyCode: async () => {},
+  setupRecaptcha: () => {}
+});
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [verificationId, setVerificationId] = useState<string | null>(null);
   const [recaptchaVerifier, setRecaptchaVerifier] = useState<RecaptchaVerifier | null>(null);
 
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged(user => {
-      setCurrentUser(user);
+    const unsubscribe = onAuthStateChanged(firebaseAuth, (user) => {
+      if (user) {
+        setUser(user);
+      } else {
+        setUser(null);
+      }
       setLoading(false);
     });
 
-    return unsubscribe;
+    return () => unsubscribe();
   }, []);
 
   const setupRecaptcha = (elementId: string) => {
@@ -98,7 +108,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const value = {
-    currentUser,
+    user,
     loading,
     verificationId,
     sendVerificationCode,
@@ -111,4 +121,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       {!loading && children}
     </AuthContext.Provider>
   );
-} 
+}
+
+export const useAuth = () => useContext(AuthContext); 

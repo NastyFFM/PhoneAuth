@@ -1,11 +1,22 @@
 {
-  "dependencies": {
-    "@types/react": "^19.0.10",
-    "firebase": "^11.3.1",
-    "react": "^19.0.0"
-  },
+  "name": "phoneauth",
+  "version": "0.1.0",
+  "private": true,
   "scripts": {
-    "build": "next build && next export",
-    "deploy": "firebase deploy"
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "firebase": "^11.3.1",
+    "next": "latest",
+    "react": "latest",
+    "react-dom": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "typescript": "latest"
   }
 }
