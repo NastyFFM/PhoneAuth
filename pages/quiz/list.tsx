@@ -1,18 +1,18 @@
-import { CreateQuizForm } from '@/components/CreateQuizForm';
+import { QuizList } from '@/components/QuizList';
+import { AuthProvider } from '@/context/AuthContext';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/router';
 import { useEffect } from 'react';
-import { AuthProvider } from '@/context/AuthContext';
 
-export default function CreateQuizPage() {
+export default function QuizListPage() {
   return (
     <AuthProvider>
-      <CreateQuizContent />
+      <QuizListContent />
     </AuthProvider>
   );
 }
 
-function CreateQuizContent() {
+function QuizListContent() {
   const { user } = useAuth();
   const router = useRouter();
 
@@ -22,14 +22,12 @@ function CreateQuizContent() {
     }
   }, [user, router]);
 
-  if (!user) {
-    return null;
-  }
+  if (!user) return null;
 
   return (
     <div>
-      <h1 style={{ textAlign: 'center', marginBottom: '2rem' }}>Quiz erstellen</h1>
-      <CreateQuizForm />
+      <h1 style={{ textAlign: 'center', marginBottom: '2rem' }}>Meine Quizze</h1>
+      <QuizList />
     </div>
   );
 } 

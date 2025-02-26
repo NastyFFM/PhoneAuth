@@ -12,6 +12,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { QuizQuestion } from '../types/quiz';
+import { v4 as uuidv4 } from 'uuid';
 
 const COLLECTION_NAME = 'quizQuestions';
 
@@ -19,8 +20,14 @@ export const quizService = {
   // Neue Quizfrage erstellen
   async createQuestion(question: Omit<QuizQuestion, 'id'>) {
     try {
-      const docRef = await addDoc(collection(db, COLLECTION_NAME), question);
-      return { id: docRef.id, ...question };
+      const questionWithUuid = {
+        ...question,
+        uuid: uuidv4(),
+        createdAt: Date.now()
+      };
+      
+      const docRef = await addDoc(collection(db, COLLECTION_NAME), questionWithUuid);
+      return { id: docRef.id, ...questionWithUuid };
     } catch (error) {
       console.error('Error creating question:', error);
       throw error;
@@ -79,8 +86,29 @@ export const quizService = {
         id: doc.id,
         ...doc.data()
       })) as QuizQuestion[];
-    } catch (error) {
+    } catch (error: any) {
+      if (error.code === 'failed-precondition') {
+        const indexUrl = error.message.match(/https:\/\/console\.firebase\.google\.com[^\s]*/)?.[0];
+        throw new Error(
+          `Bitte erstellen Sie den benötigten Index für die Sortierung. \n\n` +
+          `Sie können den Index hier erstellen: ${indexUrl}\n\n` +
+          `Nach dem Erstellen des Index warten Sie bitte einen Moment, bis dieser aktiv ist.`
+        );
+      }
       console.error('Error getting user questions:', error);
+      throw error;
+    }
+  },
+
+  // Hilfsfunktion zum Löschen aller Quizfragen
+  async deleteAllQuestions() {
+    try {
+      const querySnapshot = await getDocs(collection(db, COLLECTION_NAME));
+      const deletePromises = querySnapshot.docs.map(doc => deleteDoc(doc.ref));
+      await Promise.all(deletePromises);
+      return true;
+    } catch (error) {
+      console.error('Error deleting all questions:', error);
       throw error;
     }
   }

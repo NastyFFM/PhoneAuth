@@ -11,12 +11,14 @@
     "firebase": "^11.3.1",
     "next": "latest",
     "react": "latest",
-    "react-dom": "latest"
+    "react-dom": "latest",
+    "uuid": "^11.1.0"
   },
   "devDependencies": {
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
+    "@types/uuid": "^10.0.0",
     "cross-env": "^7.0.3",
     "typescript": "latest"
   }

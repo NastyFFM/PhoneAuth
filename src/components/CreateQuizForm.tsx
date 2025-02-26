@@ -1,18 +1,26 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { quizService } from '../services/quizService';
-import { Answer } from '../types/quiz';
+import { Answer, QuizQuestion } from '../types/quiz';
+import { useRouter } from 'next/router';
 
-export function CreateQuizForm() {
+interface Props {
+  initialData?: QuizQuestion;
+}
+
+export function CreateQuizForm({ initialData }: Props) {
   const { user } = useAuth();
-  const [question, setQuestion] = useState('');
-  const [image, setImage] = useState('');
-  const [answers, setAnswers] = useState<Answer[]>([
-    { text: '', isCorrect: true },
-    { text: '', isCorrect: false },
-    { text: '', isCorrect: false },
-    { text: '', isCorrect: false }
-  ]);
+  const router = useRouter();
+  const [question, setQuestion] = useState(initialData?.question || '');
+  const [image, setImage] = useState(initialData?.image || '');
+  const [answers, setAnswers] = useState<Answer[]>(
+    initialData?.answers || [
+      { text: '', isCorrect: false },
+      { text: '', isCorrect: false },
+      { text: '', isCorrect: false },
+      { text: '', isCorrect: false }
+    ]
+  );
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -35,6 +43,14 @@ export function CreateQuizForm() {
     setAnswers(newAnswers);
   };
 
+  const handleCorrectAnswerChange = (index: number) => {
+    const newAnswers = answers.map((answer, i) => ({
+      ...answer,
+      isCorrect: i === index
+    }));
+    setAnswers(newAnswers);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user?.phoneNumber) return;
@@ -43,28 +59,29 @@ export function CreateQuizForm() {
       setIsSubmitting(true);
       setError(null);
 
-      // Validierung
       if (!question || !image || answers.some(a => !a.text)) {
         throw new Error('Bitte füllen Sie alle Felder aus');
       }
 
-      await quizService.createQuestion({
+      if (!answers.some(a => a.isCorrect)) {
+        throw new Error('Bitte wählen Sie eine richtige Antwort aus');
+      }
+
+      const quizData = {
         question,
         image,
         answers,
         createdAt: Date.now(),
         createdBy: user.phoneNumber
-      });
+      };
 
-      // Form zurücksetzen
-      setQuestion('');
-      setImage('');
-      setAnswers([
-        { text: '', isCorrect: true },
-        { text: '', isCorrect: false },
-        { text: '', isCorrect: false },
-        { text: '', isCorrect: false }
-      ]);
+      if (initialData?.id) {
+        await quizService.updateQuestion(initialData.id, quizData);
+      } else {
+        await quizService.createQuestion(quizData);
+      }
+
+      router.push('/quiz/list');
     } catch (error: any) {
       setError(error.message);
     } finally {
@@ -120,14 +137,36 @@ export function CreateQuizForm() {
       <div>
         <h3>Antworten:</h3>
         {answers.map((answer, index) => (
-          <div key={index} style={{ marginBottom: '0.5rem' }}>
+          <div key={index} style={{ 
+            marginBottom: '1rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '1rem'
+          }}>
             <input
-              type="text"
-              value={answer.text}
-              onChange={(e) => handleAnswerChange(index, e.target.value)}
-              placeholder={`Antwort ${index + 1}${answer.isCorrect ? ' (Richtig)' : ''}`}
-              style={{ width: '100%', padding: '0.5rem' }}
+              type="radio"
+              id={`correct-${index}`}
+              name="correctAnswer"
+              checked={answer.isCorrect}
+              onChange={() => handleCorrectAnswerChange(index)}
+              style={{ margin: 0 }}
             />
+            <div style={{ flex: 1 }}>
+              <input
+                type="text"
+                value={answer.text}
+                onChange={(e) => handleAnswerChange(index, e.target.value)}
+                placeholder={`Antwort ${index + 1}`}
+                style={{ 
+                  width: '100%', 
+                  padding: '0.5rem',
+                  borderColor: answer.isCorrect ? '#4CAF50' : '#ddd',
+                  borderWidth: '1px',
+                  borderStyle: 'solid',
+                  borderRadius: '4px'
+                }}
+              />
+            </div>
           </div>
         ))}
       </div>
@@ -144,7 +183,7 @@ export function CreateQuizForm() {
           cursor: isSubmitting ? 'not-allowed' : 'pointer'
         }}
       >
-        {isSubmitting ? 'Wird gespeichert...' : 'Quiz erstellen'}
+        {isSubmitting ? 'Wird gespeichert...' : initialData ? 'Quiz aktualisieren' : 'Quiz erstellen'}
       </button>
     </form>
   );
