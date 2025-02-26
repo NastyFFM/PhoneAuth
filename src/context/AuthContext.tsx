@@ -1,51 +1,24 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { initializeApp } from "firebase/app";
 import { 
-  getAuth, 
   PhoneAuthProvider,
   signInWithCredential,
   User,
-  ConfirmationResult,
   RecaptchaVerifier,
   onAuthStateChanged,
-  Auth
+  signOut
 } from 'firebase/auth';
-import { getAnalytics } from "firebase/analytics";
-import { auth as firebaseAuth } from '../firebase';
-
-// Firebase Konfiguration
-const firebaseConfig = {
-  apiKey: "AIzaSyCwl3qlg6_M8NVuNcPpsMIIA63rviAqRME",
-  authDomain: "phoneauth-1ba3c.firebaseapp.com",
-  projectId: "phoneauth-1ba3c",
-  storageBucket: "phoneauth-1ba3c.firebasestorage.app",
-  messagingSenderId: "959060902634",
-  appId: "1:959060902634:web:b3154470cc9b6a57b64d93",
-  measurementId: "G-H1E56V3FX1"
-};
-
-// Firebase initialisieren
-const app = initializeApp(firebaseConfig);
-const analytics = typeof window !== 'undefined' ? getAnalytics(app) : null;
-const auth = getAuth(app);
+import { auth } from '../config/firebase';
 
 type AuthContextType = {
   user: User | null;
   loading: boolean;
-  verificationId: string | null;
   sendVerificationCode: (phoneNumber: string) => Promise<void>;
   verifyCode: (code: string) => Promise<void>;
   setupRecaptcha: (elementId: string) => void;
+  logout: () => Promise<void>;
 };
 
-const AuthContext = createContext<AuthContextType>({
-  user: null,
-  loading: true,
-  verificationId: null,
-  sendVerificationCode: async () => {},
-  verifyCode: async () => {},
-  setupRecaptcha: () => {}
-});
+const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -54,30 +27,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [recaptchaVerifier, setRecaptchaVerifier] = useState<RecaptchaVerifier | null>(null);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(firebaseAuth, (user) => {
-      if (user) {
-        setUser(user);
-      } else {
-        setUser(null);
-      }
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setUser(user);
       setLoading(false);
     });
-
     return () => unsubscribe();
   }, []);
 
   const setupRecaptcha = (elementId: string) => {
-    if (!recaptchaVerifier) {
-      const verifier = new RecaptchaVerifier(auth, elementId, {
-        size: 'normal',
-        callback: () => {
-          // reCAPTCHA solved, allow signInWithPhoneNumber.
-        },
-        'expired-callback': () => {
-          // Response expired. Ask user to solve reCAPTCHA again.
-        }
-      });
-      setRecaptchaVerifier(verifier);
+    if (!recaptchaVerifier && typeof window !== 'undefined' && !user) {
+      try {
+        const verifier = new RecaptchaVerifier(auth, elementId, {
+          size: 'normal',
+          callback: () => {
+            console.log('reCAPTCHA solved!');
+          },
+          'expired-callback': () => {
+            console.log('reCAPTCHA expired');
+          }
+        });
+        setRecaptchaVerifier(verifier);
+        verifier.render();
+      } catch (error) {
+        console.error('Error setting up reCAPTCHA:', error);
+      }
     }
   };
 
@@ -107,17 +80,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const value = {
-    user,
-    loading,
-    verificationId,
-    sendVerificationCode,
-    verifyCode,
-    setupRecaptcha
+  const clearRecaptcha = () => {
+    if (recaptchaVerifier) {
+      recaptchaVerifier.clear();
+      setRecaptchaVerifier(null);
+    }
+  };
+
+  const logout = async () => {
+    try {
+      await signOut(auth);
+      clearRecaptcha();
+    } catch (error) {
+      console.error('Error logging out:', error);
+      throw error;
+    }
   };
 
   return (
-    <AuthContext.Provider value={value}>
+    <AuthContext.Provider value={{
+      user,
+      loading,
+      sendVerificationCode,
+      verifyCode,
+      setupRecaptcha,
+      logout
+    }}>
       {!loading && children}
     </AuthContext.Provider>
   );
