@@ -13,6 +13,7 @@ import {
 import { db } from '../config/firebase';
 import { QuizQuestion } from '../types/quiz';
 import { User } from '../types/user';
+import { userService } from './userService';
 import { v4 as uuidv4 } from 'uuid';
 
 const COLLECTION_NAME = 'quizQuestions';
@@ -141,6 +142,94 @@ export const quizService = {
       return questions[randomIndex];
     } catch (error) {
       console.error('Error getting random question:', error);
+      throw error;
+    }
+  },
+
+  // Zufällige Quizfrage abrufen, die der Benutzer noch nicht beantwortet hat
+  async getRandomQuestionForUser(user: User) {
+    try {
+      // Lade die aktuellen globalen Einstellungen
+      const settings = await userService.getGlobalSettings();
+      console.log("Cooldown-Typ in getRandomQuestionForUser:", settings.cooldownType);
+      
+      if (user.lastPlayed) {
+        const now = new Date();
+        let cooldownEnd;
+        
+        if (settings.cooldownType === 'minute') {
+          // 1 Minute nach dem letzten Spiel
+          cooldownEnd = new Date(user.lastPlayed);
+          cooldownEnd.setMinutes(cooldownEnd.getMinutes() + 1);
+        } else {
+          // Mitternacht nach dem letzten Spiel
+          cooldownEnd = new Date(user.nextQuizAllowed || 0);
+        }
+        
+        console.log("Cooldown-Ende:", cooldownEnd.toLocaleString());
+        console.log("Jetzt:", now.toLocaleString());
+        console.log("Ist im Cooldown:", now < cooldownEnd);
+        
+        if (now < cooldownEnd) {
+          // User ist noch im Cooldown
+          return { inCooldown: true, cooldownEnd };
+        }
+      }
+      
+      // Hole alle Fragen aus der Datenbank
+      console.log("Hole alle Fragen aus der Datenbank");
+      const querySnapshot = await getDocs(collection(db, COLLECTION_NAME));
+      const allQuestions = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as QuizQuestion[];
+      
+      console.log("Anzahl aller Fragen:", allQuestions.length);
+      
+      if (allQuestions.length === 0) {
+        console.log("Keine Fragen in der Datenbank gefunden");
+        return null;
+      }
+      
+      // Filtere bereits beantwortete Fragen
+      const answeredIds = user.answeredQuestions || [];
+      console.log("Bereits beantwortete Fragen:", answeredIds);
+      
+      let availableQuestions = allQuestions.filter(q => !answeredIds.includes(q.id));
+      console.log("Verfügbare Fragen nach Filter:", availableQuestions.length);
+      
+      // Wenn keine Fragen mehr übrig sind, setze zurück (alle Fragen wurden beantwortet)
+      if (availableQuestions.length === 0) {
+        console.log("Alle Fragen wurden beantwortet, beginne von vorne");
+        // Alle Fragen wurden beantwortet, beginne von vorne
+        availableQuestions = allQuestions;
+        
+        // Setze die beantworteten Fragen in der Datenbank zurück
+        await userService.resetAnsweredQuestions(user.id);
+        console.log("Beantwortete Fragen zurückgesetzt");
+      }
+      
+      // Wähle eine zufällige Frage aus
+      const randomIndex = Math.floor(Math.random() * availableQuestions.length);
+      const selectedQuestion = availableQuestions[randomIndex];
+      console.log("Ausgewählte Frage:", selectedQuestion.id);
+      
+      return selectedQuestion;
+    } catch (error) {
+      console.error('Error getting random question:', error);
+      throw error;
+    }
+  },
+
+  // Überprüfe, ob Quizfragen in der Datenbank vorhanden sind
+  async checkQuestionsExist() {
+    try {
+      const querySnapshot = await getDocs(collection(db, COLLECTION_NAME));
+      const count = querySnapshot.size;
+      console.log(`Anzahl der Quizfragen in der Datenbank: ${count}`);
+      return count > 0;
+    } catch (error) {
+      console.error('Error checking questions:', error);
       throw error;
     }
   }

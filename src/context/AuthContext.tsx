@@ -18,6 +18,7 @@ type AuthContextType = {
   verifyCode: (code: string) => Promise<void>;
   setupRecaptcha: (elementId: string) => void;
   logout: () => Promise<void>;
+  updateUser: (userData: Partial<UserType>) => void;
 };
 
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
@@ -121,6 +122,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const updateUser = (userData: Partial<UserType>) => {
+    if (!user) return;
+    setUser({ ...user, ...userData });
+  };
+
   return (
     <AuthContext.Provider value={{
       user,
@@ -128,7 +134,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       sendVerificationCode,
       verifyCode,
       setupRecaptcha,
-      logout
+      logout,
+      updateUser
     }}>
       {!loading && children}
     </AuthContext.Provider>

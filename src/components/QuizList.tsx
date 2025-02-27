@@ -112,23 +112,39 @@ export function QuizList() {
         >
           Zurück zur Startseite
         </Link>
-        {user?.isAdmin && ( // Nur Admins sehen den Löschen-Button
-          <button
-            onClick={handleDeleteAll}
-            disabled={isDeletingAll}
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <Link
+            href="/quiz/create"
             style={{
               padding: '0.5rem 1rem',
-              backgroundColor: '#dc3545',
+              backgroundColor: '#4CAF50',
               color: 'white',
               border: 'none',
               borderRadius: '25px',
-              cursor: isDeletingAll ? 'not-allowed' : 'pointer',
+              textDecoration: 'none',
               fontWeight: 'bold'
             }}
           >
-            {isDeletingAll ? 'Wird gelöscht...' : 'Alle Quizze löschen'}
-          </button>
-        )}
+            Neues Quiz
+          </Link>
+          {user?.isAdmin && (
+            <button
+              onClick={handleDeleteAll}
+              disabled={isDeletingAll}
+              style={{
+                padding: '0.5rem 1rem',
+                backgroundColor: '#dc3545',
+                color: 'white',
+                border: 'none',
+                borderRadius: '25px',
+                cursor: isDeletingAll ? 'not-allowed' : 'pointer',
+                fontWeight: 'bold'
+              }}
+            >
+              {isDeletingAll ? 'Wird gelöscht...' : 'Alle löschen'}
+            </button>
+          )}
+        </div>
       </div>
 
       {error && (
@@ -151,20 +167,6 @@ export function QuizList() {
               ? 'Es wurden noch keine Quizze erstellt.' 
               : 'Sie haben noch keine Quizze erstellt.'}
           </p>
-          <Link 
-            href="/quiz/create"
-            style={{
-              display: 'inline-block',
-              marginTop: '1rem',
-              padding: '0.5rem 1rem',
-              backgroundColor: '#4CAF50',
-              color: 'white',
-              borderRadius: '4px',
-              textDecoration: 'none'
-            }}
-          >
-            Erstellen Sie Ihr erstes Quiz
-          </Link>
         </div>
       ) : (
         <div style={{ 

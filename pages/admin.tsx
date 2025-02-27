@@ -1,9 +1,11 @@
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { SamsungLogo } from '@/components/SamsungLogo';
 import { AuthProvider } from '@/context/AuthContext';
+import { QuizSettings } from '@/components/QuizSettings';
+import { userService } from '@/services/userService';
 
 export default function Admin() {
   return (
@@ -16,6 +18,8 @@ export default function Admin() {
 function AdminContent() {
   const { user, logout } = useAuth();
   const router = useRouter();
+  const [cooldownType, setCooldownType] = useState<'minute' | 'nextDay'>('minute');
+  const [isLoading, setIsLoading] = useState(true);
 
   const handleLogout = async () => {
     try {
@@ -30,13 +34,36 @@ function AdminContent() {
     router.push('/');
   };
 
+  const handleCooldownTypeChange = (type: 'minute' | 'nextDay') => {
+    setCooldownType(type);
+  };
+
   useEffect(() => {
     if (!user?.isAdmin) {
       router.push('/');
     }
   }, [user, router]);
 
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        setIsLoading(true);
+        const settings = await userService.getGlobalSettings();
+        setCooldownType(settings.cooldownType);
+      } catch (error) {
+        console.error('Error loading settings:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    if (user?.isAdmin) {
+      loadSettings();
+    }
+  }, [user]);
+
   if (!user?.isAdmin) return null;
+  if (isLoading) return <div>Lade Einstellungen...</div>;
 
   return (
     <div style={{
@@ -107,20 +134,6 @@ function AdminContent() {
             Quiz starten
           </button>
           <Link
-            href="/quiz/create"
-            style={{
-              padding: '1rem',
-              backgroundColor: '#1428A0',
-              color: 'white',
-              border: 'none',
-              borderRadius: '25px',
-              textDecoration: 'none',
-              fontWeight: 'bold'
-            }}
-          >
-            Neues Quiz erstellen
-          </Link>
-          <Link
             href="/quiz/list"
             style={{
               padding: '1rem',
@@ -135,6 +148,11 @@ function AdminContent() {
             Quizze verwalten
           </Link>
         </div>
+        
+        <QuizSettings 
+          cooldownType={cooldownType}
+          onCooldownTypeChange={handleCooldownTypeChange}
+        />
       </div>
     </div>
   );

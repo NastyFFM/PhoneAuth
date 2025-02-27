@@ -1,19 +1,29 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { QuizQuestion } from '@/types/quiz';
 
 interface QuizGameProps {
   question: QuizQuestion;
   onClose: () => void;
   showExitButton?: boolean;
+  onWin: () => void;
 }
 
-export function QuizGame({ question, onClose, showExitButton = true }: QuizGameProps) {
+export function QuizGame({ 
+  question, 
+  onClose, 
+  showExitButton = true,
+  onWin
+}: QuizGameProps) {
   const [isWrong, setIsWrong] = useState(false);
   const [hasWon, setHasWon] = useState(false);
+
+  console.log("QuizGame-Komponente gerendert mit Frage:", question);
+  console.log("Frage hat Antworten:", question.answers);
 
   const handleAnswerClick = (isCorrect: boolean) => {
     if (isCorrect) {
       setHasWon(true);
+      onWin();
     } else {
       setIsWrong(true);
     }
