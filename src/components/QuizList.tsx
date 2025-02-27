@@ -16,11 +16,11 @@ export function QuizList() {
   }, [user]);
 
   const loadQuizzes = async () => {
-    if (!user?.phoneNumber) return;
+    if (!user) return;
     
     try {
       setLoading(true);
-      const userQuizzes = await quizService.getUserQuestions(user.phoneNumber);
+      const userQuizzes = await quizService.getUserQuestions(user);
       setQuizzes(userQuizzes);
     } catch (error: any) {
       setError(error.message);
@@ -92,22 +92,43 @@ export function QuizList() {
 
   return (
     <div style={{ maxWidth: '800px', margin: '0 auto', padding: '1rem' }}>
-      {/* Temporärer Button zum Löschen aller Quizze */}
-      <div style={{ textAlign: 'right', marginBottom: '1rem' }}>
-        <button
-          onClick={handleDeleteAll}
-          disabled={isDeletingAll}
+      {/* Navigation Buttons */}
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'space-between',
+        marginBottom: '1rem' 
+      }}>
+        <Link
+          href="/"
           style={{
             padding: '0.5rem 1rem',
-            backgroundColor: '#dc3545',
+            backgroundColor: '#1428A0',
             color: 'white',
             border: 'none',
-            borderRadius: '4px',
-            cursor: isDeletingAll ? 'not-allowed' : 'pointer'
+            borderRadius: '25px',
+            textDecoration: 'none',
+            fontWeight: 'bold'
           }}
         >
-          {isDeletingAll ? 'Wird gelöscht...' : 'Alle Quizze löschen'}
-        </button>
+          Zurück zur Startseite
+        </Link>
+        {user?.isAdmin && ( // Nur Admins sehen den Löschen-Button
+          <button
+            onClick={handleDeleteAll}
+            disabled={isDeletingAll}
+            style={{
+              padding: '0.5rem 1rem',
+              backgroundColor: '#dc3545',
+              color: 'white',
+              border: 'none',
+              borderRadius: '25px',
+              cursor: isDeletingAll ? 'not-allowed' : 'pointer',
+              fontWeight: 'bold'
+            }}
+          >
+            {isDeletingAll ? 'Wird gelöscht...' : 'Alle Quizze löschen'}
+          </button>
+        )}
       </div>
 
       {error && (
@@ -124,13 +145,12 @@ export function QuizList() {
       )}
 
       {quizzes.length === 0 ? (
-        <div style={{ 
-          textAlign: 'center', 
-          padding: '2rem',
-          backgroundColor: '#f5f5f5',
-          borderRadius: '8px'
-        }}>
-          <p>Sie haben noch keine Quizze erstellt.</p>
+        <div style={{ textAlign: 'center', padding: '2rem' }}>
+          <p>
+            {user.isAdmin 
+              ? 'Es wurden noch keine Quizze erstellt.' 
+              : 'Sie haben noch keine Quizze erstellt.'}
+          </p>
           <Link 
             href="/quiz/create"
             style={{
@@ -209,6 +229,15 @@ export function QuizList() {
                   Löschen
                 </button>
               </div>
+              {user.isAdmin && quiz.createdBy !== user.id && (
+                <div style={{
+                  fontSize: '0.8rem',
+                  color: '#666',
+                  marginTop: '0.5rem'
+                }}>
+                  Erstellt von einem anderen Admin
+                </div>
+              )}
             </div>
           ))}
         </div>

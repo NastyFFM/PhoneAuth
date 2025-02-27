@@ -53,7 +53,7 @@ export function CreateQuizForm({ initialData }: Props) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user?.phoneNumber) return;
+    if (!user?.id) return;
 
     try {
       setIsSubmitting(true);
@@ -72,7 +72,7 @@ export function CreateQuizForm({ initialData }: Props) {
         image,
         answers,
         createdAt: Date.now(),
-        createdBy: user.phoneNumber
+        createdBy: user.id
       };
 
       if (initialData?.id) {

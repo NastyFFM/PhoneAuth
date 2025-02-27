@@ -12,6 +12,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { QuizQuestion } from '../types/quiz';
+import { User } from '../types/user';
 import { v4 as uuidv4 } from 'uuid';
 
 const COLLECTION_NAME = 'quizQuestions';
@@ -73,14 +74,26 @@ export const quizService = {
     }
   },
 
-  // Alle Quizfragen eines Users abrufen
-  async getUserQuestions(userPhone: string) {
+  // Quizfragen abrufen - entweder alle (für Admins) oder nur eigene (für normale User)
+  async getUserQuestions(user: User) {
     try {
-      const q = query(
-        collection(db, COLLECTION_NAME),
-        where('createdBy', '==', userPhone),
-        orderBy('createdAt', 'desc')
-      );
+      let q;
+      
+      if (user.isAdmin) {
+        // Admins sehen alle Fragen
+        q = query(
+          collection(db, COLLECTION_NAME),
+          orderBy('createdAt', 'desc')
+        );
+      } else {
+        // Normale User sehen nur ihre eigenen Fragen
+        q = query(
+          collection(db, COLLECTION_NAME),
+          where('createdBy', '==', user.id),
+          orderBy('createdAt', 'desc')
+        );
+      }
+
       const querySnapshot = await getDocs(q);
       return querySnapshot.docs.map(doc => ({
         id: doc.id,
@@ -109,6 +122,25 @@ export const quizService = {
       return true;
     } catch (error) {
       console.error('Error deleting all questions:', error);
+      throw error;
+    }
+  },
+
+  // Füge diese neue Methode zum quizService hinzu
+  async getRandomQuestion() {
+    try {
+      const querySnapshot = await getDocs(collection(db, COLLECTION_NAME));
+      const questions = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as QuizQuestion[];
+      
+      if (questions.length === 0) return null;
+      
+      const randomIndex = Math.floor(Math.random() * questions.length);
+      return questions[randomIndex];
+    } catch (error) {
+      console.error('Error getting random question:', error);
       throw error;
     }
   }

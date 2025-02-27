@@ -8,9 +8,11 @@ import {
   signOut
 } from 'firebase/auth';
 import { auth } from '../config/firebase';
+import { userService } from '../services/userService';
+import { User as UserType } from '../types/user';
 
 type AuthContextType = {
-  user: User | null;
+  user: UserType | null;
   loading: boolean;
   sendVerificationCode: (phoneNumber: string) => Promise<void>;
   verifyCode: (code: string) => Promise<void>;
@@ -21,16 +23,38 @@ type AuthContextType = {
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<UserType | null>(null);
   const [loading, setLoading] = useState(true);
   const [verificationId, setVerificationId] = useState<string | null>(null);
   const [recaptchaVerifier, setRecaptchaVerifier] = useState<RecaptchaVerifier | null>(null);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user);
-      setLoading(false);
+    const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
+      try {
+        if (firebaseUser?.uid) {
+          // Prüfe ob User bereits existiert
+          let userData = await userService.getUser(firebaseUser.uid);
+          
+          if (!userData) {
+            // Wenn nicht, erstelle neuen User
+            userData = await userService.createUser(
+              firebaseUser.uid,
+              firebaseUser.phoneNumber || ''
+            );
+          }
+          
+          setUser(userData);
+        } else {
+          setUser(null);
+        }
+      } catch (error) {
+        console.error('Error in auth state change:', error);
+        setUser(null);
+      } finally {
+        setLoading(false);
+      }
     });
+
     return () => unsubscribe();
   }, []);
 
