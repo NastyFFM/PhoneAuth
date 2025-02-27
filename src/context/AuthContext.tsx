@@ -5,18 +5,23 @@ import {
   User,
   RecaptchaVerifier,
   onAuthStateChanged,
-  signOut
+  signOut,
+  signInWithPhoneNumber,
+  ConfirmationResult
 } from 'firebase/auth';
-import { auth } from '../config/firebase';
+import { auth, db } from '../config/firebase';
 import { userService } from '../services/userService';
 import { User as UserType } from '../types/user';
+import { doc, getDoc } from 'firebase/firestore';
 
 type AuthContextType = {
   user: UserType | null;
   loading: boolean;
-  sendVerificationCode: (phoneNumber: string) => Promise<void>;
-  verifyCode: (code: string) => Promise<void>;
-  setupRecaptcha: (elementId: string) => void;
+  loginWithPhone: (
+    phoneNumberOrVerificationId: string, 
+    verificationCode?: string,
+    recaptchaVerifier?: RecaptchaVerifier
+  ) => Promise<string | void>;
   logout: () => Promise<void>;
   updateUser: (userData: Partial<UserType>) => void;
 };
@@ -30,33 +35,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [recaptchaVerifier, setRecaptchaVerifier] = useState<RecaptchaVerifier | null>(null);
 
   useEffect(() => {
+    console.log("Setting up auth state listener");
     const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
-      try {
-        if (firebaseUser?.uid) {
-          // Prüfe ob User bereits existiert
-          let userData = await userService.getUser(firebaseUser.uid);
+      console.log("Auth state changed:", firebaseUser);
+      if (firebaseUser) {
+        try {
+          // Versuche, den User aus der Datenbank zu laden
+          const userData = await userService.getUser(firebaseUser.uid);
           
-          if (!userData) {
-            // Wenn nicht, erstelle neuen User
-            userData = await userService.createUser(
-              firebaseUser.uid,
-              firebaseUser.phoneNumber || ''
-            );
+          if (userData) {
+            // User existiert bereits in der Datenbank
+            console.log("User exists in database:", userData);
+            setUser(userData);
+          } else {
+            // Neuer User, erstelle einen Eintrag in der Datenbank
+            console.log("Creating new user in database");
+            const phoneNumber = firebaseUser.phoneNumber || '';
+            const newUser = await userService.createUser(firebaseUser.uid, phoneNumber);
+            setUser(newUser);
           }
-          
-          setUser(userData);
-        } else {
-          setUser(null);
+        } catch (error) {
+          console.error('Error loading user data:', error);
         }
-      } catch (error) {
-        console.error('Error in auth state change:', error);
+      } else {
+        console.log("User is signed out");
         setUser(null);
-      } finally {
-        setLoading(false);
       }
+      setLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => {
+      console.log("Cleaning up auth state listener");
+      unsubscribe();
+    };
   }, []);
 
   const setupRecaptcha = (elementId: string) => {
@@ -127,19 +138,83 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser({ ...user, ...userData });
   };
 
+  const loginWithPhone = async (
+    phoneNumberOrVerificationId: string, 
+    verificationCode?: string,
+    externalRecaptchaVerifier?: RecaptchaVerifier
+  ): Promise<string | void> => {
+    try {
+      if (!verificationCode) {
+        // Erster Schritt: Sende den Verifizierungscode
+        let recaptchaVerifierToUse: RecaptchaVerifier;
+        
+        if (externalRecaptchaVerifier) {
+          // Verwende den übergebenen RecaptchaVerifier
+          recaptchaVerifierToUse = externalRecaptchaVerifier;
+        } else {
+          // Erstelle einen neuen RecaptchaVerifier
+          recaptchaVerifierToUse = new RecaptchaVerifier(auth, 'recaptcha-container', {
+            size: 'normal',
+          });
+        }
+        
+        console.log("Sending verification code to:", phoneNumberOrVerificationId);
+        const confirmationResult = await signInWithPhoneNumber(
+          auth,
+          phoneNumberOrVerificationId,
+          recaptchaVerifierToUse
+        );
+        
+        // Speichere die Verification ID für den zweiten Schritt
+        setVerificationId(confirmationResult.verificationId);
+        return confirmationResult.verificationId;
+      } else {
+        // Zweiter Schritt: Bestätige den Code
+        console.log("Verifying code with verification ID:", phoneNumberOrVerificationId);
+        
+        if (!phoneNumberOrVerificationId) {
+          throw new Error('Verification ID is missing');
+        }
+        
+        try {
+          const credential = PhoneAuthProvider.credential(
+            phoneNumberOrVerificationId,
+            verificationCode
+          );
+          
+          console.log("Created credential, signing in...");
+          const userCredential = await signInWithCredential(auth, credential);
+          console.log("Sign in successful:", userCredential.user);
+          return;
+        } catch (error) {
+          console.error("Error in credential verification:", error);
+          throw error;
+        }
+      }
+    } catch (error) {
+      console.error('Login error:', error);
+      throw error;
+    }
+  };
+
   return (
     <AuthContext.Provider value={{
       user,
       loading,
-      sendVerificationCode,
-      verifyCode,
-      setupRecaptcha,
+      loginWithPhone,
       logout,
       updateUser
     }}>
+      <div id="recaptcha-container"></div>
       {!loading && children}
     </AuthContext.Provider>
   );
 }
 
-export const useAuth = () => useContext(AuthContext); 
+export function useAuth() {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+} 

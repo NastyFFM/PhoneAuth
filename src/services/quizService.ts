@@ -8,7 +8,10 @@ import {
   where, 
   getDocs,
   getDoc,
-  orderBy
+  orderBy,
+  setDoc,
+  arrayUnion,
+  Timestamp
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { QuizQuestion } from '../types/quiz';
@@ -146,53 +149,57 @@ export const quizService = {
     }
   },
 
-  // Zufällige Quizfrage abrufen, die der Benutzer noch nicht beantwortet hat
-  async getRandomQuestionForUser(user: User) {
+  // Funktion zum Markieren einer Frage als beantwortet
+  async markQuestionAsAnswered(userId: string, questionId: string): Promise<void> {
     try {
-      // Lade die aktuellen globalen Einstellungen
-      const settings = await userService.getGlobalSettings();
-      console.log("Cooldown-Typ in getRandomQuestionForUser:", settings.cooldownType);
+      console.log(`Markiere Frage ${questionId} als beantwortet für User ${userId}`);
       
-      if (user.lastPlayed) {
-        const now = new Date();
-        let cooldownEnd;
-        
-        if (settings.cooldownType === 'minute') {
-          // 1 Minute nach dem letzten Spiel
-          cooldownEnd = new Date(user.lastPlayed);
-          cooldownEnd.setMinutes(cooldownEnd.getMinutes() + 1);
-        } else {
-          // Mitternacht nach dem letzten Spiel
-          cooldownEnd = new Date(user.nextQuizAllowed || 0);
-        }
-        
-        console.log("Cooldown-Ende:", cooldownEnd.toLocaleString());
-        console.log("Jetzt:", now.toLocaleString());
-        console.log("Ist im Cooldown:", now < cooldownEnd);
-        
-        if (now < cooldownEnd) {
-          // User ist noch im Cooldown
-          return { inCooldown: true, cooldownEnd };
-        }
-      }
+      // Referenz zum User-Dokument
+      const userRef = doc(db, 'users', userId);
+      
+      // Aktualisiere das User-Dokument
+      await updateDoc(userRef, {
+        answeredQuestions: arrayUnion(questionId),
+        lastPlayed: Date.now(),
+        // Berechne das nächste Mitternachtsdatum für den nextDay-Modus
+        nextQuizAllowed: (() => {
+          const tomorrow = new Date();
+          tomorrow.setHours(24, 0, 0, 0);
+          return tomorrow.getTime();
+        })()
+      });
+      
+      console.log(`Frage ${questionId} erfolgreich als beantwortet markiert`);
+    } catch (error) {
+      console.error('Fehler beim Markieren der Frage als beantwortet:', error);
+      throw error;
+    }
+  },
+
+  // Funktion zum Abrufen einer zufälligen Frage für einen Benutzer
+  async getRandomQuestionForUser(userId: string): Promise<QuizQuestion | null> {
+    try {
+      console.log(`Lade zufällige Frage für User ${userId}`);
       
       // Hole alle Fragen aus der Datenbank
-      console.log("Hole alle Fragen aus der Datenbank");
-      const querySnapshot = await getDocs(collection(db, COLLECTION_NAME));
-      const allQuestions = querySnapshot.docs.map(doc => ({
+      const questionsSnapshot = await getDocs(collection(db, 'quizQuestions'));
+      const allQuestions = questionsSnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       })) as QuizQuestion[];
       
-      console.log("Anzahl aller Fragen:", allQuestions.length);
+      console.log(`Insgesamt ${allQuestions.length} Fragen gefunden`);
       
-      if (allQuestions.length === 0) {
-        console.log("Keine Fragen in der Datenbank gefunden");
+      // Hole die bereits beantworteten Fragen des Benutzers
+      const userDoc = await getDoc(doc(db, 'users', userId));
+      const userData = userDoc.data();
+      
+      if (!userData) {
+        console.error(`Benutzerdaten für ${userId} nicht gefunden`);
         return null;
       }
       
-      // Filtere bereits beantwortete Fragen
-      const answeredIds = user.answeredQuestions || [];
+      const answeredIds = userData.answeredQuestions || [];
       console.log("Bereits beantwortete Fragen:", answeredIds);
       
       let availableQuestions = allQuestions.filter(q => !answeredIds.includes(q.id));
@@ -200,23 +207,18 @@ export const quizService = {
       
       // Wenn keine Fragen mehr übrig sind, setze zurück (alle Fragen wurden beantwortet)
       if (availableQuestions.length === 0) {
-        console.log("Alle Fragen wurden beantwortet, beginne von vorne");
-        // Alle Fragen wurden beantwortet, beginne von vorne
+        console.log("Alle Fragen wurden beantwortet, verwende alle Fragen");
         availableQuestions = allQuestions;
-        
-        // Setze die beantworteten Fragen in der Datenbank zurück
-        await userService.resetAnsweredQuestions(user.id);
-        console.log("Beantwortete Fragen zurückgesetzt");
       }
       
       // Wähle eine zufällige Frage aus
       const randomIndex = Math.floor(Math.random() * availableQuestions.length);
       const selectedQuestion = availableQuestions[randomIndex];
-      console.log("Ausgewählte Frage:", selectedQuestion.id);
       
+      console.log(`Ausgewählte Frage: ${selectedQuestion.id}`);
       return selectedQuestion;
     } catch (error) {
-      console.error('Error getting random question:', error);
+      console.error('Fehler beim Laden einer zufälligen Frage:', error);
       throw error;
     }
   },

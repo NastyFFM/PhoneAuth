@@ -3,17 +3,16 @@ import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyCwl3qlg6_M8NVuNcPpsMIIA63rviAqRME",
-  authDomain: "phoneauth-1ba3c.firebaseapp.com",
-  projectId: "phoneauth-1ba3c",
-  storageBucket: "phoneauth-1ba3c.firebasestorage.app",
-  messagingSenderId: "959060902634",
-  appId: "1:959060902634:web:b3154470cc9b6a57b64d93",
-  measurementId: "G-H1E56V3FX1"
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID
 };
 
-// Initialize Firebase
-const app = !getApps().length ? initializeApp(firebaseConfig) : getApps()[0];
+// Initialize Firebase only if it hasn't been initialized already
+const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 
 // Initialize Auth
 export const auth = getAuth(app);

@@ -1,84 +1,37 @@
 import { useAuth } from '@/context/AuthContext';
-import PhoneLogin from '@/components/PhoneLogin';
-import Link from 'next/link';
-import Image from 'next/image';
-import { SamsungLogo } from '@/components/SamsungLogo';
-import { QuizGame } from '@/components/QuizGame';
-import { useState, useEffect } from 'react';
-import { quizService } from '@/services/quizService';
-import { QuizQuestion } from '@/types/quiz';
-import { userService } from '@/services/userService';
-import { collection, getDocs } from 'firebase/firestore';
-import { db } from '@/config/firebase';
-import { samsungSharpSans } from '@/styles/fonts';
 import { useRouter } from 'next/router';
+import { useEffect, useState } from 'react';
+import Image from 'next/image';
+import { samsungSharpSans } from '@/styles/fonts';
+import { QuizGame } from '@/components/QuizGame';
+import { quizService } from '@/services/quizService';
+import { userService } from '@/services/userService';
+import { QuizQuestion } from '@/types/quiz';
+import { collection, getDocs, doc, updateDoc, arrayUnion } from 'firebase/firestore';
+import { db } from '@/config/firebase';
+import Link from 'next/link';
+import { SamsungLogo } from '@/components/SamsungLogo';
 
-export default function Home() {
-  const { user, loading } = useAuth();
+export default function QuizPage() {
+  const { user, logout, loading } = useAuth();
   const router = useRouter();
-  
-  // Weiterleitung zur Quiz-Seite, wenn der Benutzer angemeldet ist
-  useEffect(() => {
-    if (user && !loading) {
-      console.log("User is logged in, redirecting to quiz page");
-      router.push('/quiz');
-    }
-  }, [user, loading, router]);
-  
-  return (
-    <div className={`login-page ${samsungSharpSans.variable}`}>
-      <div className="background-image">
-        <Image 
-          src="/images/Background.png" 
-          alt="Background" 
-          fill
-          style={{ objectFit: 'cover' }}
-          priority
-        />
-      </div>
-      
-      <div className="content">
-        <PhoneLogin />
-      </div>
-      
-      <style jsx>{`
-        .login-page {
-          min-height: 100vh;
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          position: relative;
-        }
-        
-        .background-image {
-          position: absolute;
-          top: 0;
-          left: 0;
-          width: 100%;
-          height: 100%;
-          z-index: -1;
-        }
-        
-        .content {
-          width: 100%;
-          max-width: 500px;
-          padding: 2rem;
-          z-index: 1;
-        }
-      `}</style>
-    </div>
-  );
-}
-
-function HomeContent() {
-  const { user, logout, updateUser } = useAuth();
   const [isPlaying, setIsPlaying] = useState(true);
   const [currentQuestion, setCurrentQuestion] = useState<QuizQuestion | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loadingQuestion, setLoadingQuestion] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cooldownEnds, setCooldownEnds] = useState<number | null>(null);
   const [timeLeft, setTimeLeft] = useState<number>(0);
   const [globalSettings, setGlobalSettings] = useState<{ cooldownType: 'minute' | 'nextDay' }>({ cooldownType: 'minute' });
+
+  console.log("Quiz page - User:", user, "Loading:", loading);
+
+  // Überprüfe, ob der Benutzer angemeldet ist
+  useEffect(() => {
+    if (!loading && !user) {
+      console.log("User not logged in, redirecting to login page");
+      router.push('/');
+    }
+  }, [user, loading, router]);
 
   // Lade die globalen Einstellungen beim Start
   useEffect(() => {
@@ -107,13 +60,18 @@ function HomeContent() {
             // Cooldown ist abgelaufen, lade eine Frage
             loadRandomQuestion();
           }
+        } else {
+          // Kein Cooldown, lade eine Frage
+          loadRandomQuestion();
         }
       } catch (error) {
         console.error('Error loading global settings:', error);
       }
     };
     
-    loadGlobalSettings();
+    if (user) {
+      loadGlobalSettings();
+    }
   }, [user]);
 
   // Countdown-Timer
@@ -165,7 +123,7 @@ function HomeContent() {
     if (!user) return;
     
     try {
-      setLoading(true);
+      setLoadingQuestion(true);
       
       // Lade die aktuellen globalen Einstellungen
       const settings = await userService.getGlobalSettings();
@@ -192,7 +150,7 @@ function HomeContent() {
           console.log("User ist im Cooldown bis:", new Date(cooldownEnd).toLocaleString());
           setCooldownEnds(cooldownEnd);
           setCurrentQuestion(null);
-          setLoading(false);
+          setLoadingQuestion(false);
           return;
         } else {
           console.log("Cooldown ist abgelaufen, lade neue Frage");
@@ -201,7 +159,7 @@ function HomeContent() {
       
       try {
         // Verwende die Methode, um eine Frage zu erhalten, die der User noch nicht beantwortet hat
-        const result = await quizService.getRandomQuestionForUser(user);
+        const result = await quizService.getRandomQuestionForUser(user.id);
         console.log("Ergebnis von getRandomQuestionForUser:", result);
         
         // Prüfe, ob wir ein Cooldown-Objekt oder eine echte Frage erhalten haben
@@ -229,7 +187,7 @@ function HomeContent() {
       setError(`Fehler beim Laden der Quizfrage: ${error instanceof Error ? error.message : String(error)}`);
       setIsPlaying(false);
     } finally {
-      setLoading(false);
+      setLoadingQuestion(false);
     }
   };
 
@@ -240,8 +198,9 @@ function HomeContent() {
   const handleLogout = async () => {
     try {
       await logout();
+      router.push('/');
     } catch (error) {
-      console.error('Logout error:', error);
+      console.error('Error logging out:', error);
     }
   };
 
@@ -258,24 +217,16 @@ function HomeContent() {
       
       // Lade die aktuellen globalen Einstellungen
       const settings = await userService.getGlobalSettings();
-      setGlobalSettings(settings);
-      console.log("Aktuelle Cooldown-Einstellung bei Gewinn:", settings.cooldownType);
       
-      // Speichere lastPlayed und nextQuizAllowed in der Datenbank
-      await userService.updateLastPlayedWithMidnight(user.id, now, midnightTimestamp);
-      
-      // Füge die beantwortete Frage hinzu
-      await userService.addAnsweredQuestion(user.id, currentQuestion.id);
-      
-      // Aktualisiere den lokalen User-State
-      const answeredQuestions = [...(user.answeredQuestions || []), currentQuestion.id];
-      updateUser({ 
+      // Markiere die Frage als beantwortet direkt mit Firestore
+      const userRef = doc(db, 'users', user.id);
+      await updateDoc(userRef, {
+        answeredQuestions: arrayUnion(currentQuestion.id),
         lastPlayed: now,
-        nextQuizAllowed: midnightTimestamp,
-        answeredQuestions
+        nextQuizAllowed: midnightTimestamp
       });
       
-      // Setze den Cooldown je nach aktuellem Modus
+      // Aktualisiere den User mit dem Zeitstempel der letzten Antwort
       let actualCooldownEnd: number;
       
       if (settings.cooldownType === 'minute') {
@@ -292,27 +243,10 @@ function HomeContent() {
     }
   };
 
-  // Füge diese Funktion zur HomeContent-Komponente hinzu
-  useEffect(() => {
-    const checkQuestions = async () => {
-      try {
-        const exist = await quizService.checkQuestionsExist();
-        if (!exist) {
-          setError('Keine Quizfragen in der Datenbank vorhanden. Bitte fügen Sie zuerst Fragen hinzu.');
-          console.error('Keine Quizfragen in der Datenbank vorhanden');
-        }
-      } catch (error) {
-        console.error('Fehler beim Überprüfen der Quizfragen:', error);
-      }
-    };
-    
-    checkQuestions();
-  }, []);
-
-  // Füge diese Funktion zur HomeContent-Komponente hinzu
+  // Füge diese Funktion zur Komponente hinzu
   const loadDirectQuestion = async () => {
     try {
-      setLoading(true);
+      setLoadingQuestion(true);
       setError(null);
       
       // Direkte Abfrage der Datenbank ohne Filter
@@ -340,150 +274,51 @@ function HomeContent() {
       console.error("Fehler beim direkten Laden der Fragen:", error);
       setError(`Fehler beim Laden der Quizfragen: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
-      setLoading(false);
+      setLoadingQuestion(false);
     }
   };
 
-  // Füge diese Funktion zur HomeContent-Komponente hinzu
-  const checkQuestionFormat = async () => {
-    try {
-      console.log("Überprüfe das Format der Quizfragen");
-      const querySnapshot = await getDocs(collection(db, 'quizQuestions'));
-      
-      querySnapshot.docs.forEach((doc, index) => {
-        const data = doc.data();
-        console.log(`Frage ${index + 1} (ID: ${doc.id}):`, data);
-        
-        // Überprüfe, ob die Frage alle erforderlichen Felder hat
-        const hasQuestion = 'question' in data;
-        const hasAnswers = 'answers' in data && Array.isArray(data.answers);
-        const hasValidAnswers = hasAnswers && data.answers.every(a => 
-          'text' in a && 'isCorrect' in a
-        );
-        
-        console.log(`Frage ${index + 1} hat Frage: ${hasQuestion}, Antworten: ${hasAnswers}, Gültige Antworten: ${hasValidAnswers}`);
-        
-        if (!hasQuestion || !hasAnswers || !hasValidAnswers) {
-          console.error(`Frage ${index + 1} hat ein ungültiges Format!`);
-        }
-      });
-    } catch (error) {
-      console.error("Fehler beim Überprüfen des Formats:", error);
-    }
-  };
-
-  // Rufe diese Funktion beim Laden der Komponente auf
-  useEffect(() => {
-    checkQuestionFormat();
-  }, []);
-
-  console.log("Aktuelle Frage:", currentQuestion);
-  console.log("Fehler:", error);
-  console.log("Lädt:", loading);
-  console.log("Cooldown endet:", cooldownEnds ? new Date(cooldownEnds).toLocaleString() : "Kein Cooldown");
+  if (!user) {
+    return <div>Redirecting to login...</div>;
+  }
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      background: 'linear-gradient(135deg, #87CEEB 0%, #B19CD9 100%)',
-      padding: '2rem',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center'
-    }}>
-      {/* Samsung Logo */}
-      <SamsungLogo />
-
-      {/* Buttons in der oberen rechten Ecke */}
-      {user && (
-        <div style={{ 
-          position: 'absolute', 
-          top: '1rem', 
-          right: '1rem',
-          display: 'flex',
-          gap: '1rem'
-        }}>
+    <div className={`quiz-page ${samsungSharpSans.variable}`}>
+      <div className="background-image">
+        <Image 
+          src="/images/Background.png" 
+          alt="Background" 
+          fill
+          style={{ objectFit: 'cover' }}
+          priority
+        />
+      </div>
+      
+      <div className="header">
+        <div className="logo">
+          <SamsungLogo />
+        </div>
+        
+        <div className="header-buttons">
           {user.isAdmin && (
-            <Link
-              href="/admin"
-              style={{
-                padding: '0.5rem 1rem',
-                backgroundColor: '#1428A0',
-                color: 'white',
-                border: 'none',
-                borderRadius: '25px',
-                textDecoration: 'none',
-                fontWeight: 'bold',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem'
-              }}
-            >
-              <span>Admin Menu</span>
+            <Link href="/admin" className="admin-button">
+              Admin Menu
             </Link>
           )}
-          <button
-            onClick={handleLogout}
-            style={{
-              padding: '0.5rem 1rem',
-              backgroundColor: '#dc3545',
-              color: 'white',
-              border: 'none',
-              borderRadius: '25px',
-              cursor: 'pointer',
-              fontWeight: 'bold'
-            }}
-          >
+          <button onClick={handleLogout} className="logout-button">
             Abmelden
           </button>
         </div>
-      )}
-
-      {/* Hauptinhalt */}
-      <div style={{
-        width: '100%',
-        maxWidth: '400px',
-        textAlign: 'center'
-      }}>
-        {!user ? (
-          <>
-            <h1 style={{
-              fontSize: '2rem',
-              marginBottom: '2rem',
-              color: '#000',
-              fontFamily: 'SamsungOne, Arial, sans-serif'
-            }}>
-              Willkommen zum Quiz
-            </h1>
-            <div style={{
-              background: 'rgba(255, 255, 255, 0.9)',
-              borderRadius: '20px',
-              padding: '2rem',
-              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.1)'
-            }}>
-              <PhoneLogin />
-            </div>
-          </>
-        ) : loading ? (
-          <div>Lade Quizfrage...</div>
+      </div>
+      
+      <div className="content">
+        {loadingQuestion ? (
+          <div className="loading-container">Lade Quizfrage...</div>
         ) : timeLeft > 0 ? (
           // Zeige Cooldown-Info an, wenn der User im Cooldown ist
-          <div style={{
-            background: 'rgba(255, 255, 255, 0.9)',
-            borderRadius: '20px',
-            padding: '2rem',
-            textAlign: 'center'
-          }}>
-            <h2 style={{ marginBottom: '2rem' }}>
-              Nächste Frage verfügbar in:
-            </h2>
-            <div style={{ 
-              fontSize: '2rem', 
-              fontWeight: 'bold',
-              marginBottom: '1.5rem'
-            }}>
-              {formatTimeLeft()}
-            </div>
+          <div className="cooldown-container">
+            <h2>Nächste Frage verfügbar in:</h2>
+            <div className="cooldown-timer">{formatTimeLeft()}</div>
           </div>
         ) : currentQuestion ? (
           <QuizGame 
@@ -492,50 +327,116 @@ function HomeContent() {
             showExitButton={false}
             onWin={handleWin}
           />
+        ) : error ? (
+          <div className="error-container">
+            <p>{error}</p>
+            <button onClick={loadDirectQuestion} className="load-question-button">
+              Frage direkt laden
+            </button>
+          </div>
         ) : (
-          <div>Keine Quizfragen verfügbar</div>
-        )}
-
-        {/* Terms Text */}
-        {!isPlaying && (
-          <p style={{
-            marginTop: '2rem',
-            color: '#666',
-            fontSize: '0.8rem'
-          }}>
-            Mit der Nutzung stimmen Sie unseren{' '}
-            <a 
-              href="#" 
-              style={{
-                color: '#1428A0',
-                textDecoration: 'none'
-              }}
-            >
-              Nutzungsbedingungen
-            </a>
-            {' '}zu
-          </p>
-        )}
-
-        {/* Füge einen Button hinzu, um die Fragen direkt zu laden */}
-        {user && !currentQuestion && !loading && (
-          <button
-            onClick={loadDirectQuestion}
-            style={{
-              padding: '1rem',
-              backgroundColor: '#4CAF50',
-              color: 'white',
-              border: 'none',
-              borderRadius: '25px',
-              cursor: 'pointer',
-              fontWeight: 'bold',
-              marginTop: '1rem'
-            }}
-          >
-            Frage direkt laden
-          </button>
+          <div className="no-questions-container">
+            <p>Keine Quizfragen verfügbar</p>
+            <button onClick={loadDirectQuestion} className="load-question-button">
+              Frage direkt laden
+            </button>
+          </div>
         )}
       </div>
+      
+      <style jsx>{`
+        .quiz-page {
+          min-height: 100vh;
+          display: flex;
+          flex-direction: column;
+          position: relative;
+        }
+        
+        .background-image {
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          z-index: -1;
+        }
+        
+        .header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 1rem 2rem;
+          background-color: rgba(255, 255, 255, 0.9);
+          box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        
+        .logo {
+          display: flex;
+          align-items: center;
+        }
+        
+        .header-buttons {
+          display: flex;
+          gap: 1rem;
+        }
+        
+        .admin-button {
+          padding: 0.5rem 1rem;
+          background-color: #1428A0;
+          color: white;
+          border: none;
+          border-radius: 25px;
+          text-decoration: none;
+          font-weight: bold;
+          display: flex;
+          align-items: center;
+        }
+        
+        .logout-button {
+          padding: 0.5rem 1rem;
+          background-color: #dc3545;
+          color: white;
+          border: none;
+          border-radius: 25px;
+          cursor: pointer;
+          font-weight: bold;
+        }
+        
+        .content {
+          flex: 1;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          padding: 2rem;
+        }
+        
+        .loading-container, .cooldown-container, .error-container, .no-questions-container {
+          background-color: white;
+          padding: 2rem;
+          border-radius: 20px;
+          box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+          text-align: center;
+          max-width: 500px;
+          width: 100%;
+        }
+        
+        .cooldown-timer {
+          font-size: 2rem;
+          font-weight: bold;
+          margin: 1.5rem 0;
+        }
+        
+        .load-question-button {
+          padding: 1rem;
+          background-color: #4CAF50;
+          color: white;
+          border: none;
+          border-radius: 25px;
+          cursor: pointer;
+          font-weight: bold;
+          margin-top: 1rem;
+        }
+      `}</style>
     </div>
   );
-}
+} 
